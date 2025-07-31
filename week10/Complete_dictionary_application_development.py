@@ -2898,7 +2898,7 @@ class KhmerEnglishDictionaryApp(QMainWindow):
                 font-size: {self.font_manager.font_size}pt;
             }}
             QTabBar::tab:selected{{
-                background-color: white;
+                background-color: black;
                 border-bottom: 2px solid #4a90e2;
             }}
             QGroupBox{{
