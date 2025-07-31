@@ -1,0 +1,62 @@
+# Import necessary classes from the PyQt6 module
+from PyQt6.QtWidgets import QApplication, QWidget, QLabel, QPushButton, QVBoxLayout, QLineEdit
+import sys  # Import sys to handle command-line arguments and exit functions
+
+# Define a function that will be called when the button is clicked
+def compute_square():
+    try:
+        # Try to get the text input from the QLineEdit and convert it to a float
+        num = float(num_input.text())
+        
+        # If successful, compute the square and display it on the result label
+        result_label.setText(f"Square = {num ** 2}")
+    
+    # Handle the case where the conversion fails (e.g., input is not a number)
+    except ValueError:
+        # Display an error message on the result label
+        result_label.setText("Please enter a valid number")
+
+# Create the main application object
+app = QApplication(sys.argv)
+
+# Create the main window (a QWidget)
+window = QWidget()
+
+# Set the title of the main window
+window.setWindowTitle("Compute Square App")
+
+# Create a QLineEdit for the user to enter a number
+num_input = QLineEdit()
+
+# Set placeholder text in the input box to guide the user
+num_input.setPlaceholderText("Enter a number")
+
+# Create a QPushButton labeled "Compute Square"
+compute_button = QPushButton("Compute Square")
+
+# Connect the button's clicked signal to the compute_square function
+compute_button.clicked.connect(compute_square)
+
+# Create a QLabel to show the result (initially empty)
+result_label = QLabel("")
+
+# Create a vertical layout to arrange widgets vertically
+layout = QVBoxLayout()
+
+# Add the input box to the layout
+layout.addWidget(num_input)
+
+# Add the button to the layout
+layout.addWidget(compute_button)
+
+# Add the result label to the layout
+layout.addWidget(result_label)
+
+# Set the layout for the main window
+window.setLayout(layout)
+
+# Show the main window on the screen
+window.show()
+
+# Start the application's event loop and exit when it's closed
+sys.exit(app.exec())
