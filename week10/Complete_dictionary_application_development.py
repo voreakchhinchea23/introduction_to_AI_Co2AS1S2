@@ -2928,7 +2928,7 @@ class KhmerEnglishDictionaryApp(QMainWindow):
                 gridline-color: #0c00ff;
             }}
             QHeaderView::section{{
-                background-color: #e8e8e8;
+                background-color: blue;
                 padding: 8px;
                 border: 1px solid #c0c0c0;
                 font-family: '{self.font_manager.get_font_family()}';
