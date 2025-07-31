@@ -6,11 +6,14 @@ import os
 import sounddevice as sd
 import wavio
 from dotenv import load_dotenv
-from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
-                             QPushButton, QLineEdit, QTableView, QMessageBox, QLabel,
-                             QTabWidget, QDateEdit, QHeaderView, QAbstractItemView)
+from PyQt6.QtWidgets import (
+    QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
+    QPushButton, QLineEdit, QTableView, QMessageBox, QLabel,
+    QTabWidget, QDateEdit, QTimeEdit, QHeaderView, QAbstractItemView
+)
 from PyQt6.QtGui import QStandardItemModel, QStandardItem
-from PyQt6.QtCore import Qt, QDate, QDateTime
+from PyQt6.QtCore import Qt, QDate, QDateTime, QTime, QTimer
+import pygame
 
 # Load environment variables from .env file
 load_dotenv()
@@ -46,11 +49,17 @@ class SpeechToText:
 class SmartTodoApp(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("Smart To-Do List")
+        self.setWindowTitle("Smart To-Do List with Reminders")
         self.setGeometry(100, 100, 900, 700)
         
         # Initialize APIs
         self.speech_to_text = SpeechToText(api_key)
+        
+        # Initialize pygame mixer for alarm sound
+        pygame.mixer.init()
+        
+        # Initialize active_reminder_id
+        self.active_reminder_id = None
         
         # Initialize database
         self.init_database()
@@ -61,6 +70,11 @@ class SmartTodoApp(QMainWindow):
         # Initialize task filter for current date
         self.update_task_filter()
         
+        # Timer for checking reminders
+        self.timer = QTimer()
+        self.timer.timeout.connect(self.check_reminders)
+        self.timer.start(1000)  # Check every second
+
     def init_database(self):
         try:
             conn = sqlite3.connect("todo.db")
@@ -72,6 +86,7 @@ class SmartTodoApp(QMainWindow):
                     category TEXT,
                     priority TEXT,
                     due_date TEXT,
+                    reminder_time TEXT,
                     created_date TEXT,
                     updated_date TEXT
                 )
@@ -96,20 +111,31 @@ class SmartTodoApp(QMainWindow):
         main_tab = QWidget()
         main_layout_tab = QVBoxLayout(main_tab)
         
-        # Date selection section
-        date_layout = QHBoxLayout()
+        # Date and time selection section
+        date_time_layout = QHBoxLayout()
         date_label = QLabel("Select Date:")
         date_label.setStyleSheet("font-size: 14px; font-weight: bold;")
-        date_layout.addWidget(date_label)
+        date_time_layout.addWidget(date_label)
         
         self.date_input = QDateEdit()
         self.date_input.setCalendarPopup(True)
         self.date_input.setDate(QDate.currentDate())
         self.date_input.setStyleSheet("padding: 8px; font-size: 14px;")
         self.date_input.dateChanged.connect(self.update_task_filter)
-        date_layout.addWidget(self.date_input)
-        date_layout.addStretch()
-        main_layout_tab.addLayout(date_layout)
+        date_time_layout.addWidget(self.date_input)
+        
+        time_label = QLabel("Reminder Time (HH:mm:ss):")
+        time_label.setStyleSheet("font-size: 14px; font-weight: bold;")
+        date_time_layout.addWidget(time_label)
+        
+        self.time_input = QTimeEdit()
+        self.time_input.setDisplayFormat("HH:mm:ss")
+        self.time_input.setTime(QTime(0, 0, 0))  # Default to 00:00:00
+        self.time_input.setStyleSheet("padding: 8px; font-size: 14px;")
+        date_time_layout.addWidget(self.time_input)
+        
+        date_time_layout.addStretch()
+        main_layout_tab.addLayout(date_time_layout)
         
         # Input section
         input_layout = QHBoxLayout()
@@ -133,7 +159,7 @@ class SmartTodoApp(QMainWindow):
         # Task table
         self.task_table = QTableView()
         self.task_model = QStandardItemModel(self)
-        self.task_model.setHorizontalHeaderLabels(["ID", "Task", "Category", "Priority", "Due Date", "Created Date", "Updated Date"])
+        self.task_model.setHorizontalHeaderLabels(["ID", "Task", "Category", "Priority", "Due Date", "Reminder Time", "Created Date", "Updated Date"])
         self.task_table.setModel(self.task_model)
         self.task_table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
         self.task_table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
@@ -141,8 +167,8 @@ class SmartTodoApp(QMainWindow):
         self.task_table.setStyleSheet("font-size: 14px;")
         # Hide due_date, created_date, and updated_date columns
         self.task_table.setColumnHidden(4, True)
-        self.task_table.setColumnHidden(5, True)
         self.task_table.setColumnHidden(6, True)
+        self.task_table.setColumnHidden(7, True)
         self.task_table.selectionModel().selectionChanged.connect(self.on_row_selection_changed)
         main_layout_tab.addWidget(self.task_table)
         
@@ -158,6 +184,12 @@ class SmartTodoApp(QMainWindow):
         remove_button.setStyleSheet("padding: 8px; font-size: 14px; background-color: #F44336; color: white;")
         action_layout.addWidget(remove_button)
         
+        self.stop_button = QPushButton("Stop Reminder")
+        self.stop_button.clicked.connect(self.stop_reminder)
+        self.stop_button.setEnabled(False)
+        self.stop_button.setStyleSheet("padding: 8px; font-size: 14px; background-color: #F44336; color: white;")
+        action_layout.addWidget(self.stop_button)
+        
         main_layout_tab.addLayout(action_layout)
         
         # Status label
@@ -170,7 +202,7 @@ class SmartTodoApp(QMainWindow):
         db_layout = QVBoxLayout(db_tab)
         self.db_table = QTableView()
         self.db_model = QStandardItemModel(self)
-        self.db_model.setHorizontalHeaderLabels(["ID", "Task", "Category", "Priority", "Due Date", "Created Date", "Updated Date"])
+        self.db_model.setHorizontalHeaderLabels(["ID", "Task", "Category", "Priority", "Due Date", "Reminder Time", "Created Date", "Updated Date"])
         self.db_table.setModel(self.db_model)
         self.db_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
         self.db_table.setStyleSheet("font-size: 14px;")
@@ -192,7 +224,7 @@ class SmartTodoApp(QMainWindow):
         try:
             conn = sqlite3.connect("todo.db")
             cursor = conn.cursor()
-            cursor.execute("SELECT id, task, category, priority, due_date, created_date, updated_date FROM tasks WHERE due_date = ?", (selected_date,))
+            cursor.execute("SELECT id, task, category, priority, due_date, reminder_time, created_date, updated_date FROM tasks WHERE due_date = ?", (selected_date,))
             rows = cursor.fetchall()
             
             # Update task table
@@ -204,7 +236,7 @@ class SmartTodoApp(QMainWindow):
                 self.task_model.appendRow(items)
             
             # Update database view table
-            cursor.execute("SELECT id, task, category, priority, due_date, created_date, updated_date FROM tasks")
+            cursor.execute("SELECT id, task, category, priority, due_date, reminder_time, created_date, updated_date FROM tasks")
             rows = cursor.fetchall()
             self.db_model.removeRows(0, self.db_model.rowCount())
             for row in rows:
@@ -232,10 +264,21 @@ class SmartTodoApp(QMainWindow):
         if selected:
             row = selected[0].row()
             task_text = self.task_model.item(row, 1).text()  # task column
+            reminder_time = self.task_model.item(row, 5).text()  # reminder_time column
             self.task_input.setText(task_text)
+            # Set time input if reminder_time is valid, else default to 00:00:00
+            try:
+                time_obj = QTime.fromString(reminder_time, "HH:mm:ss")
+                if time_obj.isValid():
+                    self.time_input.setTime(time_obj)
+                else:
+                    self.time_input.setTime(QTime(0, 0, 0))
+            except:
+                self.time_input.setTime(QTime(0, 0, 0))
             self.add_update_button.setText("Update Task")
         else:
             self.task_input.clear()
+            self.time_input.setTime(QTime(0, 0, 0))
             self.add_update_button.setText("Add Task")
         
     def add_or_update_task(self):
@@ -248,6 +291,7 @@ class SmartTodoApp(QMainWindow):
             conn = sqlite3.connect("todo.db")
             cursor = conn.cursor()
             selected = self.task_table.selectionModel().selectedRows()
+            reminder_time = self.time_input.time().toString("HH:mm:ss")
             if selected:
                 # Update existing task
                 row = selected[0].row()
@@ -258,13 +302,14 @@ class SmartTodoApp(QMainWindow):
                 
                 cursor.execute("""
                     UPDATE tasks
-                    SET task = ?, category = ?, priority = ?, due_date = ?, updated_date = ?
+                    SET task = ?, category = ?, priority = ?, due_date = ?, reminder_time = ?, updated_date = ?
                     WHERE id = ?
-                """, (task_text, new_category, new_priority, new_due_date, updated_datetime, task_id))
+                """, (task_text, new_category, new_priority, new_due_date, reminder_time, updated_datetime, task_id))
                 conn.commit()
                 
                 self.update_task_filter()
                 self.task_input.clear()
+                self.time_input.setTime(QTime(0, 0, 0))
                 self.add_update_button.setText("Add Task")
                 self.task_table.selectionModel().clearSelection()
                 self.status_label.setText("Task updated successfully")
@@ -275,13 +320,14 @@ class SmartTodoApp(QMainWindow):
                 current_datetime = QDateTime.currentDateTime().toString("yyyy-MM-dd HH:mm:ss")
                 
                 cursor.execute("""
-                    INSERT INTO tasks (task, category, priority, due_date, created_date, updated_date)
-                    VALUES (?, ?, ?, ?, ?, ?)
-                """, (task_text, category, priority, due_date, current_datetime, current_datetime))
+                    INSERT INTO tasks (task, category, priority, due_date, reminder_time, created_date, updated_date)
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                """, (task_text, category, priority, due_date, reminder_time, current_datetime, current_datetime))
                 conn.commit()
                 
                 self.update_task_filter()
                 self.task_input.clear()
+                self.time_input.setTime(QTime(0, 0, 0))
                 self.status_label.setText("Task added successfully")
                 
         except sqlite3.Error as e:
@@ -291,6 +337,7 @@ class SmartTodoApp(QMainWindow):
         
     def cancel_action(self):
         self.task_input.clear()
+        self.time_input.setTime(QTime(0, 0, 0))
         self.task_table.selectionModel().clearSelection()
         self.add_update_button.setText("Add Task")
         self.status_label.setText("Action cancelled")
@@ -312,6 +359,7 @@ class SmartTodoApp(QMainWindow):
             
             self.update_task_filter()
             self.task_input.clear()
+            self.time_input.setTime(QTime(0, 0, 0))
             self.add_update_button.setText("Add Task")
             self.status_label.setText("Task removed successfully")
             
@@ -354,6 +402,43 @@ class SmartTodoApp(QMainWindow):
             if os.path.exists(audio_file):
                 os.remove(audio_file)
         
+    def check_reminders(self):
+        try:
+            conn = sqlite3.connect("todo.db")
+            cursor = conn.cursor()
+            cursor.execute("SELECT id, task, due_date, reminder_time FROM tasks")
+            tasks = cursor.fetchall()
+            
+            current_datetime = QDateTime.currentDateTime().toString("yyyy-MM-dd HH:mm:ss")
+            
+            for task in tasks:
+                task_id, task_text, due_date, reminder_time = task
+                # Combine due_date and reminder_time for comparison
+                if reminder_time and reminder_time != "00:00:00":  # Only check if reminder_time is set and not default
+                    reminder_datetime = f"{due_date} {reminder_time}"
+                    # Check if reminder matches current time and is not already active
+                    if reminder_datetime == current_datetime and (self.active_reminder_id is None or self.active_reminder_id != task_id):
+                        self.active_reminder_id = task_id
+                        self.status_label.setText(f"Reminder: {task_text}")
+                        try:
+                            pygame.mixer.music.load("beepbeep.mp3")  # Ensure beepbeep.mp3 is in the same directory
+                            pygame.mixer.music.play(-1)  # Loop sound
+                            self.stop_button.setEnabled(True)
+                        except pygame.error as e:
+                            print(f"Sound error: {e}")
+                            self.status_label.setText(f"Reminder: {task_text} (sound failed)")
+                            self.stop_button.setEnabled(True)
+        except sqlite3.Error as e:
+            self.status_label.setText(f"Database error: {str(e)}")
+        finally:
+            conn.close()
+        
+    def stop_reminder(self):
+        pygame.mixer.music.stop()
+        self.stop_button.setEnabled(False)
+        self.status_label.setText("Reminder stopped")
+        self.active_reminder_id = None
+        
     def categorize_task(self, task_text):
         task_text = task_text.lower()
         if any(word in task_text for word in ["study", "assignment", "homework", "exam", "lecture", 
@@ -376,6 +461,11 @@ class SmartTodoApp(QMainWindow):
             category = "General"
             priority = "Medium"
         return category, priority
+
+    def closeEvent(self, event):
+        # Clean up pygame mixer when closing
+        pygame.mixer.quit()
+        event.accept()
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
