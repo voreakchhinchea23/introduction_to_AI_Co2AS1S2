@@ -49,7 +49,7 @@ class SpeechToText:
 class SmartTodoApp(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("Smart To-Do List with Reminders")
+        self.setWindowTitle("Smart To-Do List")
         self.setGeometry(100, 100, 900, 700)
         
         self.speech_to_text = SpeechToText(api_key)
