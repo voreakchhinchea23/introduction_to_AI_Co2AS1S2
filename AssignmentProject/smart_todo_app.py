@@ -388,7 +388,8 @@ class SmartTodoApp(QMainWindow):
         if any(word in task_text for word in ["study", "assignment", "homework", "exam", "lecture", 
                                              "project", "research", "essay", "lab", "quiz", "thesis", "deadline"]):
             category = "University Work"
-            priority = "High" if any(word in task_text for word in ["urgent", "deadline"]) else "Medium"
+            priority = "High" if any(word in task_text for word in ["urgent", "deadline", "tomorrow", "tonight"]) else "Medium"
+            
         elif any(word in task_text for word in ["chore", "errand", "grocery", "shopping", "clean", 
                                                "laundry", "exercise", "cook", "meal", "sleep", "routine"]):
             category = "Daily"
